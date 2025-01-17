@@ -17,50 +17,76 @@ permissions:
   contents: read
 
 jobs:
-  build_and_deploy_job:
+  deploy_dev:
     permissions:
       contents: read
       pull-requests: write
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/dev')
     runs-on: ubuntu-latest
-    name: Build and Deploy Job
+    name: Deploy to Development
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Set environment variables
-        id: set-env-vars
-        run: |
-          BRANCH_NAME=${GITHUB_REF##*/}
-          if [[ "$BRANCH_NAME" == "main" ]]; then
-            echo "::set-output name=APP_LOCATION::/"
-            echo "::set-output name=API_LOCATION::api"
-            echo "::set-output name=APP_ARTIFACT_LOCATION::build"
-            echo "::set-output name=AZURE_STATIC_WEB_APPS_API_TOKEN::${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROD }}"
-          elif [[ "$BRANCH_NAME" == "staging" ]]; then
-            echo "::set-output name=APP_LOCATION::/"
-            echo "::set-output name=API_LOCATION::staging-api"
-            echo "::set-output name=APP_ARTIFACT_LOCATION::staging-build"
-            echo "::set-output name=AZURE_STATIC_WEB_APPS_API_TOKEN::${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_STAGING }}"
-          elif [[ "$BRANCH_NAME" == "dev" ]]; then
-            echo "::set-output name=APP_LOCATION::/"
-            echo "::set-output name=API_LOCATION::dev-api"
-            echo "::set-output name=APP_ARTIFACT_LOCATION::dev-build"
-            echo "::set-output name=AZURE_STATIC_WEB_APPS_API_TOKEN::${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_DEV }}"
-          fi
-        shell: bash
-
-      - name: Build And Deploy
-        id: builddeploy
+      - name: Deploy to Dev Environment
+        id: deploy_dev
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ steps.set-env-vars.outputs.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_DEV }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: ${{ steps.set-env-vars.outputs.APP_LOCATION }}
-          api_location: ${{ steps.set-env-vars.outputs.API_LOCATION }}
-          app_artifact_location: ${{ steps.set-env-vars.outputs.APP_ARTIFACT_LOCATION }}
+          app_location: "/"
+          api_location: "dev-api"
+          app_artifact_location: "dev-build"
+
+  deploy_staging:
+    needs: deploy_dev
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/staging')
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Deploy to Staging Environment
+        id: deploy_staging
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_STAGING }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          api_location: "staging-api"
+          app_artifact_location: "staging-build"
+
+  deploy_prod:
+    needs: deploy_staging
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main')
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Deploy to Production Environment
+        id: deploy_prod
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROD }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          api_location: "api"
+          app_artifact_location: "build"
 
   close_pull_request_job:
     permissions:
